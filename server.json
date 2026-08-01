@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.peterbartsch/thistripbtw-mcp",
+  "description": "Persistent, shareable travel workspaces for AI agents. Hand someone a complete, editable travel plan as a private map link. No account, no API key, no card — usable on a person's behalf where signup-walled travel tools are not.",
+  "repository": {
+    "url": "https://github.com/peterbartsch/thistripbtw-mcp",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "websiteUrl": "https://thistripbtw.us/for-agents",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "thistripbtw-mcp",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://thistripbtw.us/mcp"
+    }
+  ]
+}

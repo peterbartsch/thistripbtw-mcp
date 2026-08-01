@@ -1,0 +1,16 @@
+{
+  "name": "thistripbtw-mcp",
+  "version": "1.0.0",
+  "description": "Persistent, shareable travel workspaces for AI agents. Hand someone a complete, editable travel plan as a private map link. No account, no API key, no card.",
+  "keywords": ["mcp", "modelcontextprotocol", "travel", "itinerary", "trip", "map", "agent"],
+  "homepage": "https://thistripbtw.us/for-agents",
+  "repository": { "type": "git", "url": "git+https://github.com/peterbartsch/thistripbtw-mcp.git" },
+  "license": "MIT",
+  "author": "Peter Bartsch",
+  "type": "module",
+  "bin": { "thistripbtw-mcp": "./thistripbtw-mcp.mjs" },
+  "main": "./thistripbtw-mcp.mjs",
+  "files": ["thistripbtw-mcp.mjs", "README.md", "LICENSE", "server.json"],
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node thistripbtw-mcp.mjs --selftest" }
+}
