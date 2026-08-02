@@ -30,8 +30,14 @@ https://thistripbtw.us/mcp
 
 Streamable HTTP, no key, no sign-up to start. That is the whole configuration.
 
-**Or run the file yourself**, if you would rather read the code than trust a host. Node 18+, no
-dependencies, no install step:
+**Or run it locally from npm.** Node 18+, no dependencies, nothing to keep updated:
+
+```bash
+claude mcp add thistripbtw -- npx -y thistripbtw-mcp
+```
+
+**Or fetch the one file and run that**, if you would rather read the code than trust either a host
+or a package registry. This is the whole install:
 
 ```bash
 curl -O https://thistripbtw.us/mcp/thistripbtw-mcp.mjs
@@ -45,18 +51,21 @@ claude mcp add thistripbtw -- node ./thistripbtw-mcp.mjs
 {
   "mcpServers": {
     "thistripbtw": {
-      "command": "node",
-      "args": ["/absolute/path/to/thistripbtw-mcp.mjs"]
+      "command": "npx",
+      "args": ["-y", "thistripbtw-mcp"]
     }
   }
 }
 ```
+
+Swap to `"command": "node"` with `"args": ["/absolute/path/to/thistripbtw-mcp.mjs"]` if you fetched
+the file instead.
 </details>
 
 Check it before you trust it — this touches no network and needs no config:
 
 ```bash
-node thistripbtw-mcp.mjs --selftest
+npx -y thistripbtw-mcp --selftest
 ```
 
 Both paths are the same single tool and produce byte-identical links. The hosted one is tested
