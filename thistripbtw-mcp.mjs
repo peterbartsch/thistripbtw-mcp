@@ -85,6 +85,72 @@ function buildLink(input) {
   return { url: `${SITE}/new#d=${b64}`, legs: legs.length };
 }
 
+/* ── reading one back ──────────────────────────────────────────────────────────────────────
+   The inverse of buildLink, and the reason it exists: a format you can only WRITE is not a
+   format. Until this, an assistant handed a trip link could do nothing with it — not summarise
+   it, not add a stop, not convert it. The payload is in the link, so this needs no network and
+   no key, exactly like building one.
+
+   The distinction that matters, and the one people will trip over: a DRAFT link carries the
+   whole trip in its #d= fragment and can be read here. A KEPT trip's link is /{slug}/#k=phrase
+   — that fragment is a password, not a payload, and its contents live on the server behind it.
+   Saying so plainly is better than "malformed input". */
+function readLink(input) {
+  const raw = String((input && input.link) || "").trim();
+  if (!raw) throw new Error("no link given");
+
+  let b64;
+  const at = raw.indexOf("#d=");
+  if (at >= 0) b64 = raw.slice(at + 3);
+  else if (/#k=/.test(raw))
+    throw new Error("that is a kept trip's link — the #k= fragment is its password, not the trip. Its contents live on the server and only the people holding that link can read them; there is nothing here to decode");
+  else if (/https?:\/\//i.test(raw))
+    throw new Error("that URL carries no trip — a readable trip link has a #d= fragment holding the itinerary");
+  else b64 = raw;                       // a bare payload is fine
+
+  b64 = b64.split(/[?&\s#]/)[0];
+  if (!b64) throw new Error("the link has an empty #d= fragment");
+
+  let payload;
+  try {
+    const pad = b64.replace(/-/g, "+").replace(/_/g, "/");
+    payload = JSON.parse(Buffer.from(pad, "base64").toString("utf8"));
+  } catch (e) {
+    throw new Error("that fragment did not decode to a trip — it may have been truncated when the link was pasted");
+  }
+  if (!payload || typeof payload !== "object" || !payload.o || !Array.isArray(payload.l))
+    throw new Error("that decoded, but it is not shaped like a trip");
+
+  /* Back into the shape build_trip_link ACCEPTS, not the compact one it emits, so a caller can
+     read a trip, change one field and pass the result straight back without translating. */
+  const trip = {
+    name: payload.n || "",
+    origin: payload.o,
+    legs: payload.l.map((l) => {
+      const out = { to: l.to, mode: l.mode || "drive" };
+      for (const k of ["date", "note", "who", "subtype", "craft", "flight"])
+        if (l[k] !== undefined) out[k] = l[k];
+      if (l.stay && l.stay.lodging) {
+        out.lodging = l.stay.lodging;
+        if (l.stay.note) out.stayNote = l.stay.note;
+      }
+      return out;
+    }),
+  };
+
+  const where = (p) => (p && p.name) || "an unnamed place";
+  const lines = trip.legs.map((l, i) => {
+    const bits = [l.date, l.mode, l.flight, l.who && l.who.length ? l.who.join(" & ") : null,
+                  l.lodging ? `stay: ${l.lodging}` : null].filter(Boolean);
+    return `${i + 1}. ${where(l.to)}${bits.length ? "  —  " + bits.join(" · ") : ""}`;
+  });
+  const summary =
+    `${trip.name || "Untitled trip"} — ${trip.legs.length} leg${trip.legs.length === 1 ? "" : "s"}\n` +
+    `Starts: ${where(trip.origin)}\n` + lines.join("\n");
+
+  return { trip, summary, legs: trip.legs.length };
+}
+
 /* ── the tool, as the model sees it ────────────────────────────────────────────────────── */
 
 const PLACE = {
@@ -146,6 +212,27 @@ const TOOL = {
   },
 };
 
+const READ_TOOL = {
+  name: "read_trip_link",
+  description:
+    "Use when someone gives you a this trip, btw link and you need to know what is actually in " +
+    "it — to summarise the plan, answer a question about it, add a stop, or convert it to " +
+    "something else. Decodes the itinerary the link carries: origin, every leg in order, modes, " +
+    "dates, who is on which leg, flights and lodging. Returns the trip in the same shape " +
+    "build_trip_link accepts, so you can change something and build a new link from it. Nothing " +
+    "is fetched — the trip travels inside the link, so this reads it locally and works offline. " +
+    "Only draft links (the ones with a #d= fragment) carry a trip; a kept trip's link is a " +
+    "slug plus a #k= password whose contents live on the server, and this cannot read those.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      link: { type: "string",
+        description: "The trip link, e.g. https://thistripbtw.us/new#d=… — the whole URL is fine, or just the fragment." },
+    },
+    required: ["link"],
+  },
+};
+
 /* ── MCP over stdio: JSON-RPC 2.0, newline-delimited ───────────────────────────────────── */
 
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + "\n");
@@ -164,10 +251,26 @@ function handle(req) {
       serverInfo: { name: "thistripbtw", version: "1.0.0" },
     });
   }
-  if (method === "tools/list") return ok(id, { tools: [TOOL] });
+  if (method === "tools/list") return ok(id, { tools: [TOOL, READ_TOOL] });
+  /* Only `tools` is declared, so a spec-following client never asks for these — and -32601 is
+     the correct answer when it does. Scanners ask anyway: Smithery's 2026-08-03 scan logged both
+     failures as WARNINGS on the public listing, which reads as a broken server rather than a
+     capability we never claimed. An empty list is true and does not look broken. */
+  if (method === "resources/list") return ok(id, { resources: [] });
+  if (method === "prompts/list")   return ok(id, { prompts: [] });
   if (method === "ping")       return ok(id, {});
 
   if (method === "tools/call") {
+    if (params?.name === READ_TOOL.name) {
+      try {
+        const { trip, summary, legs } = readLink(params.arguments || {});
+        return ok(id, { content: [{ type: "text",
+          text: `${summary}\n\nAs build_trip_link arguments:\n` +
+                "```json\n" + JSON.stringify(trip, null, 2) + "\n```" }] });
+      } catch (e) {
+        return ok(id, { content: [{ type: "text", text: `Could not read that: ${e.message}` }], isError: true });
+      }
+    }
     if (params?.name !== TOOL.name) return err(id, -32602, `no tool named ${params?.name}`);
     try {
       const { url, legs } = buildLink(params.arguments || {});
@@ -267,8 +370,42 @@ if (process.argv.includes("--selftest")) {
     process.stdout.write = (s) => { out = JSON.parse(s); return true; };
     handle({ jsonrpc: "2.0", id: 1, method: "tools/list" });
     process.stdout.write = real;
-    if (out.result.tools[0].name !== "build_trip_link") throw new Error("no tool");
+    const names = out.result.tools.map((x) => x.name);
+    if (!names.includes("build_trip_link")) throw new Error("no build tool");
+    if (!names.includes("read_trip_link")) throw new Error("no read tool");
   });
+
+  /* read_trip_link. The round trip is the one that matters: what build emits, read must
+     return in the shape build accepts, or "change one thing and rebuild" does not work. */
+  t("reads back a link it just built", () => {
+    const { trip: back } = readLink({ link: buildLink(trip).url });
+    if (back.name !== trip.name) throw new Error("lost the name");
+    if (back.origin.name !== "Chicago, IL") throw new Error("lost the origin");
+    if (back.legs.length !== trip.legs.length) throw new Error("lost legs");
+  });
+  t("survives a full build → read → build round trip", () => {
+    const once = buildLink(trip).url;
+    const twice = buildLink(readLink({ link: once }).trip).url;
+    if (once !== twice) throw new Error("round trip is not stable");
+  });
+  t("flattens stay back to the lodging build accepts", () => {
+    const url = buildLink({ ...trip, legs: [{ to: trip.legs[0].to, lodging: "Hotel Maverick", stayNote: "late check-in" }] }).url;
+    const l = readLink({ link: url }).trip.legs[0];
+    if (l.lodging !== "Hotel Maverick" || l.stayNote !== "late check-in") throw new Error("lost the stay");
+    if ("stay" in l) throw new Error("left the nested shape build would ignore");
+  });
+  t("takes a bare fragment as well as a whole URL", () => {
+    const frag = buildLink(trip).url.split("#d=")[1];
+    if (readLink({ link: frag }).legs !== trip.legs.length) throw new Error("bare payload failed");
+  });
+  throws("says a kept trip's link is a password, not a payload",
+    () => readLink({ link: "https://thistripbtw.us/abcdefg/#k=one-two-three-four" }), "password");
+  throws("refuses a URL with no trip in it",
+    () => readLink({ link: "https://thistripbtw.us/new" }), "carries no trip");
+  throws("refuses a truncated fragment", () => readLink({ link: "#d=not-base64!!" }), "did not decode");
+  throws("refuses valid base64 that is not a trip",
+    () => readLink({ link: Buffer.from('{"hello":1}').toString("base64") }), "not shaped like a trip");
+  throws("refuses an empty link", () => readLink({ link: "" }), "no link given");
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

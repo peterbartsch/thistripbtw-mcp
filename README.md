@@ -7,8 +7,9 @@ Persistent, shareable travel workspaces for AI agents.
 Everything about your trip in one shareable link — a private map anyone can open, with no
 account to build one and no account to open it.
 
-An MCP server that hands someone that link. One tool: it turns a list of legs into
-a URL. The person opens it and their trip is already drawn on a real map — free, editable, theirs.
+An MCP server that hands someone that link, and reads one back. Two tools: one turns a list of
+legs into a URL, the other decodes a URL into the legs. The person opens it and their trip is
+already drawn on a real map — free, editable, theirs.
 
 **→ [thistripbtw.us](https://thistripbtw.us)** — the human side, and the thing that pays for this.
 The server is free and asks for nothing; the site's one-time paid tiers fund it rather than an ad
@@ -78,15 +79,23 @@ Check it before you trust it — this touches no network and needs no config:
 npx -y thistripbtw-mcp --selftest
 ```
 
-Both paths are the same single tool and produce byte-identical links. The hosted one is tested
-against this file on every build, so the two cannot drift apart.
+Both paths carry the same two tools and produce byte-identical links. The hosted one is tested
+against this file on every build — same tool list, same output — so the two cannot drift apart.
 
 Step-by-step, with a worked example in JavaScript and Python:
 **[thistripbtw.us/tutorials](https://thistripbtw.us/tutorials)**
 
-## The tool
+## The tools
 
-`build_trip_link` — an origin plus legs in order, returns a URL. Only `origin` and one leg with a
+**`read_trip_link`** — a link in, the itinerary out. Origin, every leg in order, modes,
+dates, who is on which leg, flights and lodging. It returns the trip in the shape
+`build_trip_link` *accepts*, so reading a trip, changing one thing and building a new link is
+three lines and no translation. Nothing is fetched — the trip is inside the link, so this works
+offline like everything else here. Only draft links (`#d=`) carry a trip; a kept trip's
+`/{slug}/#k=` fragment is a password and its contents live on the server, which the tool says
+rather than failing obscurely.
+
+**`build_trip_link`** — an origin plus legs in order, returns a URL. Only `origin` and one leg with a
 `to` are required. Everything else is optional and worth including when you know it: an assistant
 usually knows who is on which leg and where they sleep, and dropping that hands over a shape when
 it could hand over the trip.
