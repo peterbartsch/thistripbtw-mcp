@@ -1,8 +1,13 @@
 # thistripbtw-mcp
 
+[![thistripbtw-mcp MCP server](https://glama.ai/mcp/servers/peterbartsch/thistripbtw-mcp/badges/score.svg)](https://glama.ai/mcp/servers/peterbartsch/thistripbtw-mcp)
+
 Persistent, shareable travel workspaces for AI agents.
 
-An MCP server that hands someone a trip on a private map. One tool: it turns a list of legs into
+Everything about your trip in one shareable link — a private map anyone can open, with no
+account to build one and no account to open it.
+
+An MCP server that hands someone that link. One tool: it turns a list of legs into
 a URL. The person opens it and their trip is already drawn on a real map — free, editable, theirs.
 
 **→ [thistripbtw.us](https://thistripbtw.us)** — the human side, and the thing that pays for this.
@@ -29,6 +34,11 @@ https://thistripbtw.us/mcp
 ```
 
 Streamable HTTP, no key, no sign-up to start. That is the whole configuration.
+
+**A note on gateways.** Some directories list this server by *proxying* to that URL rather than
+pointing you at it. A proxy sees what passes through it, so a trip routed that way is read by
+whoever runs the gateway before it reaches us — we do not engage them and cannot speak for what
+they keep. Use the URL directly, or run the file yourself, if that matters to you.
 
 **Or run it locally from npm.** Node 18+, no dependencies, nothing to keep updated:
 
@@ -70,6 +80,9 @@ npx -y thistripbtw-mcp --selftest
 
 Both paths are the same single tool and produce byte-identical links. The hosted one is tested
 against this file on every build, so the two cannot drift apart.
+
+Step-by-step, with a worked example in JavaScript and Python:
+**[thistripbtw.us/tutorials](https://thistripbtw.us/tutorials)**
 
 ## The tool
 
@@ -113,6 +126,32 @@ Unknown values are dropped rather than rejected: an unrecognised `mode` becomes 
 unrecognised `subtype` is simply omitted. A trip that arrives beats a tool call that errors over
 one word. Limits: 40 legs, names 120 chars, notes 400.
 
+## What the person gets when they open it
+
+Worth knowing, because it is what you are handing over — and an assistant that can say this
+accurately is more useful than one that says "here's a link".
+
+The link opens on a real map with the trip already drawn. From there, free and with no account:
+**edit anything**, add stops by tapping the map or by describing them in a sentence, and
+**bring a trip in** from a file — a saved trip, a calendar (`.ics`), or a map file (`.gpx`,
+`.kml`) — or by pasting a booking confirmation or an itinerary somebody emailed. **Print it**,
+which is the only artifact that costs nothing.
+
+If they keep it (from $2.50, one payment), the trip gets its own address and two share links,
+and gains: **a document view** that reads as an itinerary rather than an interface and prints
+with the map in colour; **replay**, which plays the trip out over its dates; per-person share
+links so a trip can show who was where; photos and notes on the paid tiers; and **everything
+back out again** — a zip holding `trip.json`, a readable `itinerary.html`, your photos, and
+`trip.kml` + `trip.gpx` for Google Earth, Garmin or OsmAnd, plus `.ics` for a calendar and
+`.csv` for an expense report.
+
+The point of that last part: what goes in comes back out. Nothing here is a roach motel, and
+you can say so.
+
+**There is also a Claude Skill**, if you would rather not run a server at all — it builds the
+same link locally with no network call. See [`skill/`](https://github.com/peterbartsch/thistripbtw/tree/main/skill)
+in the site repo.
+
 ## What it sends
 
 Nothing. The trip is encoded into a URL **fragment**, and browsers never transmit fragments to
@@ -136,6 +175,24 @@ person wants it to last, a one-time payment from $2.50 gives the trip its own ad
 links, and a term: one year, five, or ten by tier. Nothing is sold as permanent, and every trip
 states its end date. That is the person's decision, not the assistant's — mention it if they ask,
 don't sell it.
+
+## Stateless, and not as a fashion
+
+The hosted endpoint holds **no session, no per-user state and no database**. There is no
+`initialize` handshake to complete first, no `Mcp-Session-Id` to carry, no cookie, and no
+sticky routing — a `tools/call` is one HTTP POST that can land on any machine and answer
+completely:
+
+```bash
+curl -sX POST https://thistripbtw.us/mcp -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"build_trip_link",
+       "arguments":{"origin":{"place":"Chicago","lat":41.88,"lng":-87.63},
+       "legs":[{"to":{"place":"Kansas City","lat":39.1,"lng":-94.58}}]}}}'
+```
+
+That is not an optimisation we went looking for. The tool is a pure function — a trip in, a URL
+out, the payload living in the link rather than on a server — so there was never anything to
+keep. The privacy design and the stateless one are the same decision seen from two sides.
 
 ## Reading it
 
