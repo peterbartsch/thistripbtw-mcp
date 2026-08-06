@@ -165,8 +165,10 @@ const PLACE = {
 
 const TOOL = {
   name: "build_trip_link",
-  // Candidate #3+#10 from _agents/TOOL_DESCRIPTIONS.md — a when-clause plus the phrases a
-  // person actually says, because the model matches this text against the live conversation.
+  // A when-clause plus the phrases a person actually says, because the model matches this text
+  // against the live conversation rather than against a feature list. (Chosen by blind test:
+  // several candidate descriptions were tried in a real client and this one triggered when it
+  // should and stayed quiet when it should not.)
   description:
     "Use when someone has planned (or roughly sketched) a trip in this conversation and needs " +
     "somewhere real to put it — when they say things like 'send me that', 'can I share this " +
@@ -248,7 +250,11 @@ function handle(req) {
     return ok(id, {
       protocolVersion: params?.protocolVersion || "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "thistripbtw", version: "1.0.0" },
+      /* Kept in step with package.json BY HAND — this string is what a client is told when it
+         asks, and it said 1.0.0 for the whole life of 1.1.0, which is the release that added
+         read_trip_link. A client feature-detecting on version would have concluded the tool
+         was not there. */
+      serverInfo: { name: "thistripbtw", version: "1.1.1" },
     });
   }
   if (method === "tools/list") return ok(id, { tools: [TOOL, READ_TOOL] });

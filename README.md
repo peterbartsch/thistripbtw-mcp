@@ -149,8 +149,9 @@ which is the only artifact that costs nothing.
 If they keep it (from $2.50, one payment), the trip gets its own address and two share links,
 and gains: **a document view** that reads as an itinerary rather than an interface and prints
 with the map in colour; **replay**, which plays the trip out over its dates; per-person share
-links so a trip can show who was where; photos and notes on the paid tiers; and **everything
-back out again** — a zip holding `trip.json`, a readable `itinerary.html`, your photos, and
+links so a trip can show who was where; photos and notes on the paid tiers; **easter eggs** —
+notes sealed to a place, which stay shut until whoever holds the link is actually near it, with
+the radius set per drop; and **everything back out again** — a zip holding `trip.json`, a readable `itinerary.html`, your photos, and
 `trip.kml` + `trip.gpx` for Google Earth, Garmin or OsmAnd, plus `.ics` for a calendar and
 `.csv` for an expense report.
 
