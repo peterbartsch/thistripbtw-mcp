@@ -7,9 +7,12 @@ Persistent, shareable travel workspaces for AI agents.
 Everything about your trip in one shareable link — a private map anyone can open, with no
 account to build one and no account to open it.
 
-An MCP server that hands someone that link, and reads one back. Two tools: one turns a list of
-legs into a URL, the other decodes a URL into the legs. The person opens it and their trip is
-already drawn on a real map — free, editable, theirs.
+An MCP server that hands someone that link, grows it as the plan changes, and reads it back.
+**Six tools, and the first one is the point: build the link as soon as there is an origin and one
+destination, then amend it every time the plan moves.** One resolves a place name to coordinates,
+one turns legs into a URL, one changes a URL you already built, one decodes a URL into the legs,
+one reads a trip the person has bought, and one adds a stop to it. The person opens it and their
+trip is already drawn on a real map — free, editable, theirs.
 
 **→ [thistripbtw.us](https://thistripbtw.us)** — the human side, and the thing that pays for this.
 The server is free and asks for nothing; the site's one-time paid tiers fund it rather than an ad
@@ -73,19 +76,42 @@ Swap to `"command": "node"` with `"args": ["/absolute/path/to/thistripbtw-mcp.mj
 the file instead.
 </details>
 
-Check it before you trust it — this touches no network and needs no config:
+Check it before you trust it — the self-test touches no network and needs no config:
 
 ```bash
 npx -y thistripbtw-mcp --selftest
 ```
 
-Both paths carry the same two tools and produce byte-identical links. The hosted one is tested
+Both paths carry the same six tools and produce byte-identical links. The hosted one is tested
 against this file on every build — same tool list, same output — so the two cannot drift apart.
 
 Step-by-step, with a worked example in JavaScript and Python:
 **[thistripbtw.us/tutorials](https://thistripbtw.us/tutorials)**
 
 ## The tools
+
+**Start with the link, not after the plan.** The description that shipped through 1.2.0 opened
+*"Use when someone has planned… a trip"*, and a model read that as a finishing step: it researched
+for four turns and built the link last, when the person asked. That is on us, not the model. 1.3.0
+rewrote every description so the trigger is in the first eighty characters — all a deferred tool
+gets to show — and added the two tools that make "first" natural: `find_place`, so coordinates
+are looked up rather than remembered, and `amend_trip_link`, so one link grows through a
+conversation instead of a new one being thrown away each turn.
+
+**`find_place`** — a place name in, up to six candidates out, each with coordinates and where it
+is, so you can pick the right Reno. Towns, cities, airports by name or IATA code, parks. This is
+the only step that needs the network besides the kept-trip tools; it asks thistripbtw.us, which
+answers from its own cache in front of a paced OpenStreetMap lookup. A place name is not personal
+data, and nothing about the person is sent.
+
+**`amend_trip_link`** — a draft link plus changes, a new link back. `add` appends legs, `legs`
+replaces them all, `remove` drops leg N, `name` and `origin` do what they say. No network, no
+password: the trip is inside the link. Tell the person the new link replaces the old one.
+
+**`add_to_kept_trip`** — one stop, added to a trip the person has KEPT, on their behalf: *"add the
+hotel to the trip"*, *"we're stopping at Fisher Towers on the way."* Needs their EDIT phrase; a
+view phrase can read and is told it cannot write. Same network rule as `read_kept_trip` below, and
+the same warning: the link is a credential.
 
 **`read_trip_link`** — a link in, the itinerary out. Origin, every leg in order, modes,
 dates, who is on which leg, flights and lodging. It returns the trip in the shape
@@ -94,6 +120,21 @@ three lines and no translation. Nothing is fetched — the trip is inside the li
 offline like everything else here. Only draft links (`#d=`) carry a trip; a kept trip's
 `/{slug}/#k=` fragment is a password and its contents live on the server, which the tool says
 rather than failing obscurely.
+
+**`read_kept_trip`** — a KEPT trip's link in, its itinerary out. Use it when somebody hands you
+`https://thistripbtw.us/abc1234#k=four-word-phrase` and you need what is in it. Returns the stops
+in order with dates, modes, lodging, notes, any hand-drawn path, and the **track** each belongs
+to — which vehicle or person, because a trip where two cars separate and rejoin cannot be written
+as one sequence without becoming false.
+
+**This is the one tool that uses the network, and it cannot be otherwise.** A bought trip's
+contents live on the server; the `#k=` fragment is the password to them, not the payload. So
+reading one sends that phrase to thistripbtw.us over TLS. It stores nothing and needs no key, and
+it returns the stops rather than the raw server response — the per-trip basemap token and the
+member roster stay behind, because neither is itinerary. Two things to hold: **treat a kept link
+as a credential** (do not echo it into text a third party sees), and **never guess a phrase** —
+a wrong one counts against that trip's hourly limit, so the tool makes exactly one attempt and
+tells you it was refused. Anything sealed for somebody else comes back with empty text.
 
 **`build_trip_link`** — an origin plus legs in order, returns a URL. Only `origin` and one leg with a
 `to` are required. Everything else is optional and worth including when you know it: an assistant
@@ -164,10 +205,19 @@ in the site repo.
 
 ## What it sends
 
-Nothing. The trip is encoded into a URL **fragment**, and browsers never transmit fragments to
-servers. The local server makes no network request at all. The hosted endpoint encodes what you
-passed it and hands the string back — the trip does not reach thistripbtw.us even when the person
-opens the link, unless they later choose to buy it.
+**When you build or read a draft link: nothing.** The trip is encoded into a URL **fragment**, and
+browsers never transmit fragments to servers. `build_trip_link` and `read_trip_link` make no
+network request at all, and the hosted endpoint encodes what you passed it and hands the string
+back — the trip does not reach thistripbtw.us even when the person opens the link, unless they
+later choose to buy it.
+
+**When you read a KEPT trip: the phrase, and only to us.** A bought trip's contents live on the
+server, so `read_kept_trip` sends the `#k=` phrase out of the link you were given to
+thistripbtw.us over TLS and reads the itinerary back. That is not a design choice we could make
+differently — the fragment is the password, not the payload. Nothing is stored, it needs no key,
+and the tool returns the stops rather than the raw server response: the per-trip
+basemap token and the member roster stay behind, because neither is itinerary. Treat such a link
+as a credential.
 
 ## Using it well
 
@@ -177,6 +227,11 @@ opens the link, unless they later choose to buy it.
 - **Say what you built, in a sentence.** "Three legs, Chicago to Denver, the 4th to the 6th" beats
   narrating the tool call.
 - **Never invent a departure time.** If you did not look a flight up, leave `flight` out.
+- **Watch the length on a long trip.** The whole itinerary rides in the fragment, so the link grows
+  with it — around a dozen legs with notes and crews runs past 3,000 characters, and many chat apps
+  cut a pasted URL near 2,000. Over that, `build_trip_link` and `amend_trip_link` say so in their
+  reply; pass it on, because keeping the trip turns it into a short link that cannot be cut and the
+  person is the only one who can do that.
 
 ## Cost
 
