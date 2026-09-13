@@ -534,7 +534,7 @@ async function readKept(input, fetchImpl = globalThis.fetch) {
    This asks our geocoder — a cache in front of a paced Nominatim — the same thing the site's own
    search field asks. A place name is not personal data; the privacy page already lists the
    sub-processor. */
-const UA = "thistripbtw-mcp/1.3.1";
+const UA = "thistripbtw-mcp/1.3.2";
 function placeQuery(input) {
   const q = String((input && input.query) || "").trim();
   if (!q) throw new Error("no place given — send a name like \"Moab, UT\" or an airport code");
@@ -614,7 +614,7 @@ async function handle(req) {
          asks, and it said 1.0.0 for the whole life of 1.1.0, which is the release that added
          read_trip_link. A client feature-detecting on version would have concluded the tool
          was not there. */
-      serverInfo: { name: "thistripbtw", version: "1.3.1" },
+      serverInfo: { name: "thistripbtw", version: "1.3.2" },
     });
   }
   if (method === "tools/list") return ok(id, { tools: [TOOL, FIND_TOOL, AMEND_TOOL, READ_TOOL, KEPT_TOOL, ADD_TOOL] });
