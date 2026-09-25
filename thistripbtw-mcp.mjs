@@ -595,6 +595,85 @@ async function addToKept(input, fetchImpl = globalThis.fetch) {
     summary: `Added "${pt.name}" to ${trip.name || "the trip"}. It now has ${trip.stops.length} stop${trip.stops.length === 1 ? "" : "s"}.` };
 }
 
+/* ── what each tool PROMISES: annotations and output schemas (1.3.3) ──────────────────────
+   Two pieces of metadata a client reads before it decides how to treat a call.
+
+   ANNOTATIONS are hints, and the spec is explicit that they are hints — a client must not trust
+   them for security. They are written here as plain truth about this server, not as
+   reassurance: `readOnlyHint` means the call does not change anything a person owns, and only
+   add_to_kept_trip does. `openWorldHint` means it talks to a host — the three that reach
+   thistripbtw.us do; the three that only encode or decode a URL do not, which is the whole
+   privacy claim of this server and is worth saying in machine-readable form.
+
+   OUTPUT SCHEMAS describe the `structuredContent` every successful call now returns ALONGSIDE
+   the text. The text stays exactly as it was: it is what a model reads, and several of these
+   descriptions were chosen by blind test. The structured copy is for code — a client that wants
+   the link, the leg count or the stop list should not have to parse prose to get it.
+   RULE: if a tool declares an output schema, every non-error result MUST carry
+   structuredContent that matches it. Add a field here and you add it in BOTH servers, or
+   test/mcp-parity.php fails — which is the point of that test. */
+
+const LINK_OUT = { type: "string", description: "The trip link. Give this to the person rather than opening it." };
+const TRIP_OUT = {
+  type: "object",
+  description: "The trip, in exactly the shape build_trip_link takes — so it can be rebuilt or amended without translation.",
+  properties: { name: { type: "string" }, origin: PLACE, legs: { type: "array", items: LEG } },
+  required: ["origin", "legs"],
+};
+const KEPT_OUT = {
+  type: "object",
+  description: "A trip somebody bought, as this phrase is allowed to see it.",
+  properties: {
+    address: { type: "string", description: "The trip's own address, without the phrase." },
+    name:    { type: "string" },
+    access:  { type: "string", enum: ["edit", "view"], description: "What the phrase in the link grants." },
+    tier:    { type: "string" },
+    expires: { type: ["string", "null"], description: "YYYY-MM-DD, or null while no end date is set." },
+    tracks:  { type: ["object", "null"], description: "Track labels, when the trip uses them." },
+    stops:   { type: "array", items: { type: "object", description: "One stop: title, lat, lng, and whatever else was filled in." } },
+    notes:   { type: "array", items: { type: "string" } },
+  },
+  required: ["address", "stops"],
+};
+
+/* [tool, annotations, outputSchema] — one table so the six can be read against each other. */
+for (const [tool, annotations, outputSchema] of [
+  [TOOL, { title: "Build a trip link", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    { type: "object", properties: { link: LINK_OUT, legs: { type: "integer", description: "How many legs the link carries." } },
+      required: ["link", "legs"] }],
+  [FIND_TOOL, { title: "Find a place", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    { type: "object", properties: {
+        results: { type: "array", description: "Up to six candidates, best first.",
+          items: { type: "object",
+            properties: { name: { type: "string" }, where: { type: "string", description: "The fuller name, for telling two same-named places apart." },
+                          lat: { type: "number" }, lng: { type: "number" } },
+            required: ["name", "lat", "lng"] } },
+        summary: { type: "string" } },
+      required: ["results"] }],
+  [AMEND_TOOL, { title: "Amend a trip link", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    { type: "object", properties: {
+        link: LINK_OUT, legs: { type: "integer" },
+        changed: { type: "object", description: "What this call actually altered.",
+          properties: { name: { type: "boolean" }, origin: { type: "boolean" }, replaced: { type: "boolean" },
+                        added: { type: "integer" }, removed: { type: "boolean" } } } },
+      required: ["link", "legs", "changed"] }],
+  [READ_TOOL, { title: "Read a trip link", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    { type: "object", properties: { trip: TRIP_OUT, legs: { type: "integer" }, summary: { type: "string" } },
+      required: ["trip", "legs"] }],
+  [KEPT_TOOL, { title: "Read a kept trip", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    { type: "object", properties: { trip: KEPT_OUT, stops: { type: "integer" }, summary: { type: "string" } },
+      required: ["trip", "stops"] }],
+  /* The only writer in the set, and the only one that is not idempotent: call it twice with the
+     same stop and the trip has that stop twice. Not destructive — there is no delete tool here
+     at all (D-072: only the buyer may destroy a trip). */
+  [ADD_TOOL, { title: "Add a stop to a kept trip", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    { type: "object", properties: {
+        id: { type: ["string", "null"], description: "The new stop's id, when the server returned one." },
+        stops: { type: "integer", description: "How many stops the trip has now." },
+        summary: { type: "string" } },
+      required: ["stops"] }],
+]) { tool.annotations = annotations; tool.outputSchema = outputSchema; }
+
 /* ── MCP over stdio: JSON-RPC 2.0, newline-delimited ───────────────────────────────────── */
 
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + "\n");
@@ -614,7 +693,7 @@ async function handle(req) {
          asks, and it said 1.0.0 for the whole life of 1.1.0, which is the release that added
          read_trip_link. A client feature-detecting on version would have concluded the tool
          was not there. */
-      serverInfo: { name: "thistripbtw", version: "1.3.2" },
+      serverInfo: { name: "thistripbtw", version: "1.3.3" },
     });
   }
   if (method === "tools/list") return ok(id, { tools: [TOOL, FIND_TOOL, AMEND_TOOL, READ_TOOL, KEPT_TOOL, ADD_TOOL] });
@@ -632,14 +711,16 @@ async function handle(req) {
         const { trip, summary, legs } = readLink(params.arguments || {});
         return ok(id, { content: [{ type: "text",
           text: `${summary}\n\nAs build_trip_link arguments:\n` +
-                "```json\n" + JSON.stringify(trip, null, 2) + "\n```" }] });
+                "```json\n" + JSON.stringify(trip, null, 2) + "\n```" }],
+          structuredContent: { trip, legs, summary } });
       } catch (e) {
         return ok(id, { content: [{ type: "text", text: `Could not read that: ${e.message}` }], isError: true });
       }
     }
     if (params?.name === FIND_TOOL.name) {
       try { const { summary, results } = await findPlace(params.arguments || {});
-        return ok(id, { content: [{ type: "text", text: `${summary}\n\nAs data:\n` + "```json\n" + JSON.stringify(results, null, 2) + "\n```" }] });
+        return ok(id, { content: [{ type: "text", text: `${summary}\n\nAs data:\n` + "```json\n" + JSON.stringify(results, null, 2) + "\n```" }],
+          structuredContent: { results, summary } });
       } catch (e) { return ok(id, { content: [{ type: "text", text: `Could not find that: ${e.message}` }], isError: true }); }
     }
     if (params?.name === AMEND_TOOL.name) {
@@ -647,19 +728,22 @@ async function handle(req) {
         const what = [changed.added ? `added ${changed.added}` : null, changed.removed ? "removed one" : null,
                       changed.replaced ? "replaced the legs" : null, changed.name ? "renamed" : null, changed.origin ? "moved the start" : null]
                      .filter(Boolean).join(", ") || "no change";
-        return ok(id, { content: [{ type: "text", text: `Trip link (${legs} leg${legs === 1 ? "" : "s"}, ${what}):\n${url}\n\nThis replaces the earlier link — give the person this one.` + longLinkNote(url) }] });
+        return ok(id, { content: [{ type: "text", text: `Trip link (${legs} leg${legs === 1 ? "" : "s"}, ${what}):\n${url}\n\nThis replaces the earlier link — give the person this one.` + longLinkNote(url) }],
+          structuredContent: { link: url, legs, changed } });
       } catch (e) { return ok(id, { content: [{ type: "text", text: `Could not amend that: ${e.message}` }], isError: true }); }
     }
     if (params?.name === ADD_TOOL.name) {
-      try { const { summary } = await addToKept(params.arguments || {});
-        return ok(id, { content: [{ type: "text", text: summary }] });
+      try { const { id: stopId, stops, summary } = await addToKept(params.arguments || {});
+        return ok(id, { content: [{ type: "text", text: summary }],
+          structuredContent: { id: stopId, stops, summary } });
       } catch (e) { return ok(id, { content: [{ type: "text", text: `Could not add that: ${e.message}` }], isError: true }); }
     }
     if (params?.name === KEPT_TOOL.name) {
       try {
-        const { trip, summary } = await readKept(params.arguments || {});
+        const { trip, summary, stops } = await readKept(params.arguments || {});
         return ok(id, { content: [{ type: "text",
-          text: `${summary}\n\nThe trip as data:\n` + "```json\n" + JSON.stringify(trip, null, 2) + "\n```" }] });
+          text: `${summary}\n\nThe trip as data:\n` + "```json\n" + JSON.stringify(trip, null, 2) + "\n```" }],
+          structuredContent: { trip, stops, summary } });
       } catch (e) {
         return ok(id, { content: [{ type: "text", text: `Could not read that: ${e.message}` }], isError: true });
       }
@@ -675,6 +759,7 @@ async function handle(req) {
                 `asks for nothing; if they want it to last, keeping it starts at $2.50.` +
                 longLinkNote(url),
         }],
+        structuredContent: { link: url, legs },
       });
     } catch (e) {
       // isError, not a protocol error: the model should read this and try again.
