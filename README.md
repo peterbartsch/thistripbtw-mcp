@@ -1,5 +1,6 @@
 # thistripbtw-mcp
 
+[![AgentHub 已收录：trips](https://myagenthub.cn/badge/us.thistripbtw/trips)](https://myagenthub.cn/p/us.thistripbtw/trips)
 [![thistripbtw-mcp MCP server](https://glama.ai/mcp/servers/peterbartsch/thistripbtw-mcp/badges/score.svg)](https://glama.ai/mcp/servers/peterbartsch/thistripbtw-mcp)
 
 Persistent, shareable travel workspaces for AI agents.
