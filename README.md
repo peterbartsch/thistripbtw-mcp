@@ -131,7 +131,7 @@ in order with dates, modes, lodging, notes, any hand-drawn path, and the **track
 to — which vehicle or person, because a trip where two cars separate and rejoin cannot be written
 as one sequence without becoming false.
 
-**This is the one tool that uses the network, and it cannot be otherwise.** A bought trip's
+**This tool must use the network, and it cannot be otherwise.** A bought trip's
 contents live on the server; the `#k=` fragment is the password to them, not the payload. So
 reading one sends that phrase to thistripbtw.us over TLS. It stores nothing and needs no key, and
 it returns the stops rather than the raw server response — the per-trip basemap token and the
@@ -265,6 +265,7 @@ keep. The privacy design and the stateless one are the same decision seen from t
 
 ## Reading it
 
-One file, zero dependencies, under three hundred lines. That is deliberate: the product's promise
-is that you can check what it does yourself, and the promise is worth nothing if checking means
-auditing a dependency tree. It speaks MCP's JSON-RPC over stdio directly.
+One file, zero dependencies, about a thousand lines — most of it the tool descriptions and the
+reasons behind them. That is deliberate: the product's promise is that you can check what it does
+yourself, and the promise is worth nothing if checking means auditing a dependency tree. It speaks
+MCP's JSON-RPC over stdio directly.
